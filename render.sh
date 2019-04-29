@@ -1,4 +1,8 @@
 #!/bin/bash
+set -euo pipefail
+set -x
+
+BASE_DIR="${BASE_DIR:-/tmp/}"
 
 has_program() {
     hash $1 2> /dev/null
@@ -9,7 +13,7 @@ get() {
     local url=${1/https:\/\/www/http:\/\/xml}
 
     if has_program curl; then
-        curl -s $url
+        curl -Ls $url
     elif has_program wget; then
         wget $url --quiet -O -
     else
@@ -24,8 +28,8 @@ getImages() {
     do
         local imageUrl=$(echo "$line" | sed 's/http:\/\/xml/https:\/\/img/g')
         local imageFile=$(mktemp -p $2 "image.XXXXXXX.jpg")
-        get $imageUrl > $imageFile
-        sed -i "s|$line|file://$imageFile|g" $1
+        get "$imageUrl" > $imageFile
+        sed -i "s|$line|${imageFile##*/}|g" $1
 
     done
 
@@ -33,19 +37,6 @@ getImages() {
 
 convert() {
     xsltproc $1 -
-}
-
-view() {
-    local document=$1
-    if has_program xdg-open; then
-        xdg-open $document
-    elif has_program open; then
-        open $document
-    else
-        echo "Neither xdg-open nor open found. Aborting, as I don't know how to open your browser"
-        usage
-        exit 1
-    fi
 }
 
 usage() {
@@ -63,8 +54,17 @@ xdg-open or open for viewing.
 EOF
 }
 
-make_filename() {
-    echo $(mktemp -p $1 "article.XXXXXXX.html")
+redirect_to() {
+  cat << _EOF_
+Content-type: text/html
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Refresh" content="0; url="/${1}" />
+  </head>
+</html>
+_EOF_
 }
 
 main() {
@@ -87,13 +87,21 @@ main() {
             esac
         done
         shift $(expr $OPTIND - 1 )
-        local folder=$(mktemp -d)
-        local filename=$(make_filename $folder)
-        get $1 | convert $xsltFile > $filename
+        # local folder=$(mktemp -d)
+        # local filename=$(make_filename $folder)
+
+        # Remove trailing slash and use article name as folder name
+        local folder_name="$(echo ${1%/} | sed -r 's#.*/(.*)#\1#')"
+				local folder_path="${BASE_DIR}/${folder_name}"
+        local file_name="index.html"
+        local file_path="${folder_path}/${file_name}"
+        mkdir -p "${folder_path}"
+
+        get $1 | convert $xsltFile > $file_path
         if [[ $downloadImages = true ]]; then
-            getImages $filename $folder
+            getImages $file_path $folder_path
         fi
-        view $filename
+        redirect_to "${folder_name}/${file_name}"
     else
         usage
         exit 1
