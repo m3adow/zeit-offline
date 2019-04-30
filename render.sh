@@ -2,7 +2,8 @@
 set -euo pipefail
 set -x
 
-BASE_DIR="${BASE_DIR:-/tmp/}"
+HTTP_BASE_DIR="${HTTP_BASE_DIR:-/tmp/}"
+HTTP_RELATIVE_DIR="${HTTP_RELATIVE_DIR:-}"
 
 has_program() {
     hash $1 2> /dev/null
@@ -61,7 +62,7 @@ Content-type: text/html
 <!DOCTYPE html>
 <html>
   <head>
-    <meta http-equiv="Refresh" content="0; url="/${1}" />
+    <meta http-equiv="Refresh" content="0; url=${1}" />
   </head>
 </html>
 _EOF_
@@ -90,9 +91,12 @@ main() {
         # local folder=$(mktemp -d)
         # local filename=$(make_filename $folder)
 
+        # Hard code image download
+        downloadImages=true
+
         # Remove trailing slash and use article name as folder name
         local folder_name="$(echo ${1%/} | sed -r 's#.*/(.*)#\1#')"
-				local folder_path="${BASE_DIR}/${folder_name}"
+				local folder_path="${HTTP_BASE_DIR}/${folder_name}"
         local file_name="index.html"
         local file_path="${folder_path}/${file_name}"
         mkdir -p "${folder_path}"
@@ -101,7 +105,12 @@ main() {
         if [[ $downloadImages = true ]]; then
             getImages $file_path $folder_path
         fi
-        redirect_to "${folder_name}/${file_name}"
+
+        # Correct file permissions
+        chmod -R 'u=rwX,g=rX,o=rX' "${folder_path}"
+
+
+        redirect_to "${HTTP_RELATIVE_DIR}/${folder_name}/${file_name}"
     else
         usage
         exit 1
